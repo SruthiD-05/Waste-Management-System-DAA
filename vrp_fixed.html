@@ -1,0 +1,905 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>GarbageRoute — VRP Optimizer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --green-dark: #0d2b0e;
+  --green-mid: #1a5c1e;
+  --green-bright: #22c55e;
+  --green-light: #bbf7d0;
+  --green-pale: #f0fdf4;
+  --accent: #facc15;
+  --danger: #ef4444;
+  --surface: #ffffff;
+  --border: #d1fae5;
+  --text: #111827;
+  --muted: #6b7280;
+  --panel-bg: #fafff9;
+}
+
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: var(--green-dark);
+  color: var(--text);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* HEADER */
+header {
+  background: var(--green-dark);
+  border-bottom: 1px solid #1e4a21;
+  padding: 10px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+.header-left { display: flex; align-items: center; gap: 10px; }
+.logo-icon {
+  width: 36px; height: 36px;
+  background: var(--green-bright);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px;
+}
+.header-title { font-family: 'Space Mono', monospace; color: #fff; font-size: 1rem; font-weight: 700; }
+.header-sub { font-size: 0.7rem; color: #6ee7b7; letter-spacing: 0.08em; text-transform: uppercase; }
+.api-badge {
+  font-family: 'Space Mono', monospace;
+  font-size: 0.65rem;
+  background: #1a5c1e;
+  color: var(--green-bright);
+  border: 1px solid #22c55e44;
+  border-radius: 20px;
+  padding: 4px 10px;
+}
+
+/* LAYOUT */
+.layout {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* LEFT PANEL */
+.left {
+  background: var(--panel-bg);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.left-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.left-scroll::-webkit-scrollbar { width: 4px; }
+.left-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.section-card {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+}
+.section-label {
+  font-family: 'Space Mono', monospace;
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: var(--green-mid);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 10px;
+  display: flex; align-items: center; gap: 6px;
+}
+
+/* API Key input */
+.api-row { display: flex; gap: 6px; align-items: center; }
+.api-status {
+  font-size: 0.65rem;
+  margin-top: 4px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  display: none;
+}
+.api-status.ok { display: block; background: #dcfce7; color: #166534; }
+.api-status.err { display: block; background: #fef2f2; color: #991b1b; }
+
+/* Inputs */
+label { font-size: 0.75rem; color: var(--muted); display: block; margin-bottom: 3px; font-weight: 500; }
+input[type="number"], input[type="text"], input[type="password"] {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 7px;
+  font-size: 0.82rem;
+  font-family: 'DM Sans', sans-serif;
+  background: #fafafa;
+  color: var(--text);
+  transition: border-color 0.15s;
+  margin-bottom: 8px;
+}
+input:focus { outline: none; border-color: var(--green-bright); background: white; }
+
+/* Auto truck badge */
+.auto-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: #fef9c3; border: 1px solid #fde68a;
+  border-radius: 6px; padding: 5px 10px;
+  font-size: 0.73rem; color: #92400e; font-weight: 600;
+}
+.truck-count-display {
+  font-family: 'Space Mono', monospace;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--green-mid);
+  display: inline-block;
+}
+
+/* Zone cards */
+.zone-card {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+}
+.zone-card.is-depot {
+  background: #fff7ed;
+  border-color: #fed7aa;
+}
+.zone-card-header {
+  display: flex; align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.zone-card-header input[type="text"] {
+  margin: 0; padding: 4px 8px;
+  font-size: 0.8rem; font-weight: 600;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 6px; flex: 1;
+}
+.depot-tag {
+  font-size: 0.62rem;
+  background: #fff7ed; color: #c2410c;
+  border: 1px solid #fed7aa;
+  border-radius: 4px;
+  padding: 3px 7px; white-space: nowrap;
+  font-weight: 700; margin-left: 6px;
+}
+.zone-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 5px;
+}
+.zone-field label {
+  font-size: 0.6rem; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.05em;
+  margin-bottom: 2px; font-weight: 600;
+}
+.zone-field input {
+  margin: 0; padding: 4px 7px;
+  font-size: 0.78rem; text-align: center;
+  border: 1.5px solid #e5e7eb; border-radius: 6px;
+  width: 100%;
+}
+.zone-field input:focus { border-color: var(--green-bright); }
+.btn-del {
+  background: #fef2f2; border: 1px solid #fecaca;
+  border-radius: 5px; color: var(--danger);
+  cursor: pointer; font-size: 11px;
+  width: 26px; height: 26px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; margin-left: 6px;
+}
+.btn-del:hover { background: #fee2e2; }
+.btn-add {
+  width: 100%; padding: 7px;
+  background: #f0fdf4;
+  border: 1.5px dashed #86efac;
+  border-radius: 7px;
+  color: var(--green-mid); font-size: 0.78rem;
+  cursor: pointer; margin-top: 4px;
+  font-family: 'DM Sans', sans-serif;
+  transition: background 0.15s;
+}
+.btn-add:hover { background: #dcfce7; }
+
+/* Run button */
+.btn-run {
+  width: 100%; padding: 12px;
+  background: linear-gradient(135deg, #16a34a, #15803d);
+  border: none; border-radius: 9px;
+  color: white; font-size: 0.9rem; font-weight: 700;
+  cursor: pointer; font-family: 'DM Sans', sans-serif;
+  letter-spacing: 0.02em;
+  box-shadow: 0 4px 12px #16a34a44;
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+.btn-run:hover { transform: translateY(-1px); box-shadow: 0 6px 16px #16a34a55; }
+.btn-run:active { transform: translateY(0); }
+.btn-run:disabled { background: #9ca3af; box-shadow: none; cursor: not-allowed; transform: none; }
+.btn-reset {
+  width: 100%; padding: 8px;
+  background: white; border: 1.5px solid #e5e7eb;
+  border-radius: 7px; color: var(--muted);
+  font-size: 0.78rem; cursor: pointer;
+  font-family: 'DM Sans', sans-serif;
+  margin-top: 6px; transition: border-color 0.15s;
+}
+.btn-reset:hover { border-color: #9ca3af; color: var(--text); }
+
+/* Spinner */
+.spinner {
+  display: none;
+  width: 16px; height: 16px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  margin: 0 auto;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* RIGHT */
+.right { display: flex; flex-direction: column; background: #111; }
+#map { flex: 1; }
+
+/* RESULTS */
+.results-panel {
+  background: white;
+  border-top: 2px solid var(--border);
+  max-height: 180px;
+  overflow-y: auto;
+  padding: 12px 16px;
+}
+.results-panel::-webkit-scrollbar { height: 4px; width: 4px; }
+.results-panel::-webkit-scrollbar-thumb { background: var(--border); }
+
+.results-top {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 10px; flex-wrap: wrap;
+}
+.stat-pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: var(--green-pale); border: 1px solid var(--green-light);
+  border-radius: 20px; padding: 4px 12px;
+  font-size: 0.75rem; font-weight: 600; color: #166534;
+}
+.stat-pill.warn { background: #fef3c7; border-color: #fde68a; color: #92400e; }
+
+.route-cards { display: flex; gap: 8px; flex-wrap: wrap; }
+.route-card {
+  background: #fafafa; border: 1px solid #e5e7eb;
+  border-left: 4px solid #ccc;
+  border-radius: 8px; padding: 8px 12px;
+  font-size: 0.73rem; min-width: 220px;
+}
+.route-card strong { font-size: 0.8rem; display: block; margin-bottom: 3px; }
+.route-meta { color: var(--muted); margin-bottom: 3px; }
+.route-stops { color: var(--text); font-size: 0.7rem; line-height: 1.5; }
+
+.hint-text { color: var(--muted); font-size: 0.78rem; padding: 8px 0; }
+
+/* Loading overlay */
+#loadingOverlay {
+  display: none;
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  z-index: 9999;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 12px;
+}
+#loadingOverlay.show { display: flex; }
+.loading-box {
+  background: white;
+  border-radius: 12px;
+  padding: 20px 28px;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+}
+.loading-box .big-spinner {
+  width: 36px; height: 36px;
+  border: 3px solid #e5e7eb;
+  border-top-color: var(--green-bright);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin: 0 auto 10px;
+}
+.loading-box p { font-size: 0.85rem; color: var(--text); font-weight: 600; }
+.loading-box small { font-size: 0.7rem; color: var(--muted); }
+
+/* Mode toggle */
+.mode-toggle {
+  display: flex; border: 1.5px solid var(--border);
+  border-radius: 7px; overflow: hidden; margin-bottom: 8px;
+}
+.mode-btn {
+  flex: 1; padding: 6px;
+  border: none; background: white;
+  font-size: 0.72rem; cursor: pointer;
+  font-family: 'DM Sans', sans-serif;
+  color: var(--muted); transition: all 0.15s;
+}
+.mode-btn.active { background: var(--green-mid); color: white; font-weight: 600; }
+
+.coord-row {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px;
+}
+.coord-row input { margin-bottom: 0; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-left">
+    <div class="logo-icon">🗑️</div>
+    <div>
+      <div class="header-title">GarbageRoute</div>
+      <div class="header-sub">VRP · Auto Trucks · ORS Routing</div>
+    </div>
+  </div>
+  <div class="api-badge">openrouteservice API</div>
+</header>
+
+<div class="layout">
+  <!-- LEFT PANEL -->
+  <div class="left">
+    <div class="left-scroll">
+
+      <!-- API KEY -->
+      <div class="section-card">
+        <div class="section-label">🔑 ORS API Key</div>
+        <label>Paste your openrouteservice key</label>
+        <div class="api-row">
+          <input type="password" id="orsKey" placeholder="eyJ... or 5b3ce3..." style="flex:1;margin:0"/>
+          <button onclick="testApiKey()" style="padding:7px 10px;background:#f0fdf4;border:1px solid #86efac;border-radius:7px;cursor:pointer;font-size:0.78rem;color:#166534;white-space:nowrap;">Test</button>
+        </div>
+        <div class="api-status" id="apiStatus"></div>
+        <small style="font-size:0.65rem;color:var(--muted);display:block;margin-top:5px;">
+          Free key at <a href="https://openrouteservice.org/dev/#/signup" target="_blank" style="color:var(--green-mid)">openrouteservice.org</a>
+        </small>
+      </div>
+
+      <!-- TRUCK SETTINGS -->
+      <div class="section-card">
+        <div class="section-label">🚛 Truck Settings</div>
+        <label>Truck Capacity (kg)</label>
+        <input type="number" id="truckCap" value="1000" min="1"/>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:2px;">
+          <span style="font-size:0.75rem;color:var(--muted);">Trucks needed (auto):</span>
+          <div>
+            <span class="truck-count-display" id="truckCountDisplay">—</span>
+            <span style="font-size:0.7rem;color:var(--muted);margin-left:4px;">trucks</span>
+          </div>
+        </div>
+        <div class="auto-badge" style="margin-top:8px;width:100%;">
+          ⚡ Auto-calculated from total waste ÷ capacity
+        </div>
+      </div>
+
+      <!-- ZONES -->
+      <div class="section-card">
+        <div class="section-label">📍 Collection Zones</div>
+        <div class="mode-toggle">
+          <button class="mode-btn active" id="modeXY" onclick="setMode('xy')">Grid (X/Y)</button>
+          <button class="mode-btn" id="modeLatLng" onclick="setMode('latlng')">Real Coords (Lat/Lng)</button>
+        </div>
+        <div style="display:flex;gap:6px;margin-bottom:8px;">
+          <button id="depotModeBtn" onclick="toggleDepotMode()" style="flex:1;padding:7px 6px;background:#fff7ed;border:1.5px solid #fed7aa;border-radius:7px;cursor:pointer;font-size:0.73rem;color:#c2410c;font-family:'DM Sans',sans-serif;font-weight:600;">
+            ⭐ Place Depot on Map
+          </button>
+          <button id="addZoneMapBtn" onclick="startAddZoneOnMap()" style="flex:1;padding:7px 6px;background:#eff6ff;border:1.5px solid #93c5fd;border-radius:7px;cursor:pointer;font-size:0.73rem;color:#1d4ed8;font-family:'DM Sans',sans-serif;font-weight:600;">
+            📍 Add Zone on Map
+          </button>
+        </div>
+        <div id="mapClickHint" style="display:none;background:#fefce8;border:1px solid #fde68a;border-radius:6px;padding:6px 10px;font-size:0.72rem;color:#92400e;margin-bottom:8px;text-align:center;">
+          🖱️ Click anywhere on the map...
+        </div>
+        <div id="zoneList"></div>
+        <button class="btn-add" onclick="addZone()">+ Add Zone (manual entry)</button>
+      </div>
+
+      <!-- ACTIONS -->
+      <div class="section-card">
+        <button class="btn-run" id="runBtn" onclick="runVRP()">
+          <span id="runLabel">▶ Optimize Routes</span>
+          <div class="spinner" id="runSpinner"></div>
+        </button>
+        <button class="btn-reset" onclick="loadDefault()">↺ Reset to Sample Data</button>
+      </div>
+
+      <!-- HOW IT WORKS -->
+      <div style="font-size:0.7rem;color:var(--muted);line-height:1.8;background:#f9fafb;border-radius:8px;padding:10px;border:1px solid #f3f4f6;">
+        <b style="color:#374151">How it works:</b><br>
+        1. Trucks needed = <code style="background:#e5e7eb;padding:1px 4px;border-radius:3px;">⌈total waste ÷ capacity⌉</code><br>
+        2. ORS Matrix API fetches real road distances<br>
+        3. Nearest-neighbor VRP assigns zones optimally<br>
+        4. Routes drawn on Leaflet map with arrows<br><br>
+        💡 <i>With real coords mode + API key = actual road distances!</i>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- RIGHT PANEL -->
+  <div class="right" style="position:relative;">
+    <div id="map"></div>
+    <div class="results-panel" id="resultsPanel">
+      <div class="hint-text">👆 Add your ORS API key, configure zones, then click Optimize Routes</div>
+    </div>
+    <div id="loadingOverlay">
+      <div class="loading-box">
+        <div class="big-spinner"></div>
+        <p id="loadingMsg">Fetching road distances...</p>
+        <small>Calling OpenRouteService Matrix API</small>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── STATE ──
+const COLORS = ['#ef4444','#3b82f6','#22c55e','#f97316','#a855f7','#06b6d4','#f59e0b','#ec4899'];
+let zones = [];
+let routes = [];
+let mapInstance = null;
+let routeLayers = [];
+let markerLayers = [];
+let coordMode = 'xy'; // 'xy' or 'latlng'
+
+// ── MAP CLICK STATE ──
+// 'none' | 'depot' | 'zone'
+let mapClickMode = 'none';
+
+function setMapClickMode(mode) {
+  mapClickMode = mode;
+  const hint = document.getElementById('mapClickHint');
+  const depotBtn = document.getElementById('depotModeBtn');
+  const zoneBtn  = document.getElementById('addZoneMapBtn');
+
+  if (mode === 'none') {
+    hint.style.display = 'none';
+    mapInstance.getContainer().style.cursor = '';
+    depotBtn.style.background = '#fff7ed';
+    depotBtn.style.borderColor = '#fed7aa';
+    depotBtn.textContent = '⭐ Place Depot on Map';
+    zoneBtn.style.background = '#eff6ff';
+    zoneBtn.style.borderColor = '#93c5fd';
+    zoneBtn.textContent = '📍 Add Zone on Map';
+  } else if (mode === 'depot') {
+    hint.style.display = 'block';
+    hint.textContent = '🖱️ Click anywhere on the map to place the Depot... (press Esc to cancel)';
+    mapInstance.getContainer().style.cursor = 'crosshair';
+    depotBtn.style.background = '#fef3c7';
+    depotBtn.style.borderColor = '#f59e0b';
+    depotBtn.textContent = '✕ Cancel Depot Placement';
+  } else if (mode === 'zone') {
+    hint.style.display = 'block';
+    hint.textContent = '🖱️ Click anywhere on the map to add a Zone... (press Esc to cancel)';
+    mapInstance.getContainer().style.cursor = 'crosshair';
+    zoneBtn.style.background = '#dbeafe';
+    zoneBtn.style.borderColor = '#3b82f6';
+    zoneBtn.textContent = '✕ Cancel Zone Placement';
+  }
+}
+
+function toggleDepotMode() {
+  setMapClickMode(mapClickMode === 'depot' ? 'none' : 'depot');
+}
+
+function startAddZoneOnMap() {
+  setMapClickMode(mapClickMode === 'zone' ? 'none' : 'zone');
+}
+
+function initMap() {
+  mapInstance = L.map('map', { zoomControl: true }).setView([13.05, 80.25], 13);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors',
+    maxZoom: 19
+  }).addTo(mapInstance);
+
+  // Escape cancels placement mode
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && mapClickMode !== 'none') setMapClickMode('none');
+  });
+
+  mapInstance.on('click', function(e) {
+    // Only act when a placement mode is active
+    if (mapClickMode === 'none') return;
+
+    const lat = Math.round(e.latlng.lat * 10000) / 10000;
+    const lng = Math.round(e.latlng.lng * 10000) / 10000;
+
+    if (mapClickMode === 'depot') {
+      const depotIdx = zones.findIndex(z => z.isDepot);
+      const newDepot = { name: 'Depot', y: lat, x: lng, waste: 0, isDepot: true };
+      if (depotIdx >= 0) zones[depotIdx] = newDepot;
+      else zones.unshift(newDepot);
+      // Switch to latlng mode automatically when placing on real map
+      coordMode = 'latlng';
+      document.getElementById('modeXY').classList.remove('active');
+      document.getElementById('modeLatLng').classList.add('active');
+      setMapClickMode('none');
+      renderZones(); updateTruckCount(); drawMap();
+
+    } else if (mapClickMode === 'zone') {
+      zones.push({
+        name: 'Zone ' + (zones.filter(z=>!z.isDepot).length + 1),
+        x: lng, y: lat,
+        waste: 100, isDepot: false
+      });
+      // Stay in zone mode so user can keep clicking to add more zones
+      coordMode = 'latlng';
+      document.getElementById('modeXY').classList.remove('active');
+      document.getElementById('modeLatLng').classList.add('active');
+      renderZones(); updateTruckCount(); drawMap();
+      // Update hint
+      document.getElementById('mapClickHint').textContent = '🖱️ Zone added! Click again to add another, or press Esc to stop.';
+    }
+  });
+}
+
+// ── COORD MODE ──
+function setMode(mode) {
+  coordMode = mode;
+  document.getElementById('modeXY').classList.toggle('active', mode === 'xy');
+  document.getElementById('modeLatLng').classList.toggle('active', mode === 'latlng');
+  renderZones();
+}
+
+// ── DEFAULT DATA ──
+function loadDefault() {
+  coordMode = 'latlng';
+  document.getElementById('modeXY').classList.remove('active');
+  document.getElementById('modeLatLng').classList.add('active');
+
+  zones = [
+    { name: 'Depot',        y: 13.0827, x: 80.2707, waste: 0,   isDepot: true  },
+    { name: 'T. Nagar',     y: 13.0358, x: 80.2335, waste: 500, isDepot: false },
+    { name: 'Anna Nagar',   y: 13.0850, x: 80.2101, waste: 300, isDepot: false },
+    { name: 'Adyar',        y: 13.0012, x: 80.2565, waste: 450, isDepot: false },
+    { name: 'Velachery',    y: 12.9815, x: 80.2180, waste: 200, isDepot: false },
+    { name: 'Tambaram',     y: 12.9249, x: 80.1000, waste: 600, isDepot: false },
+    { name: 'Guindy',       y: 13.0067, x: 80.2206, waste: 350, isDepot: false },
+    { name: 'Perambur',     y: 13.1177, x: 80.2459, waste: 250, isDepot: false },
+    { name: 'Sholinganallur',y:12.9010, x: 80.2279, waste: 400, isDepot: false },
+  ];
+  document.getElementById('truckCap').value = 1000;
+  renderZones();
+  updateTruckCount();
+  drawMap(true);
+  document.getElementById('resultsPanel').innerHTML = '<div class="hint-text">👆 Click "Optimize Routes" to see the solution</div>';
+}
+
+// ── TRUCK COUNT AUTO CALC ──
+function updateTruckCount() {
+  const cap = +document.getElementById('truckCap').value || 1;
+  const totalWaste = zones.filter(z => !z.isDepot).reduce((s, z) => s + z.waste, 0);
+  const needed = totalWaste > 0 ? Math.ceil(totalWaste / cap) : 0;
+  document.getElementById('truckCountDisplay').textContent = needed || '—';
+  return needed;
+}
+
+// ── RENDER ZONE LIST ──
+function renderZones() {
+  const list = document.getElementById('zoneList');
+  const latLabel = coordMode === 'latlng' ? 'Latitude' : 'Y';
+  const lngLabel = coordMode === 'latlng' ? 'Longitude' : 'X';
+  list.innerHTML = '';
+
+  zones.forEach((z, i) => {
+    const step = coordMode === 'latlng' ? '0.0001' : '1';
+    const card = document.createElement('div');
+    card.className = 'zone-card' + (z.isDepot ? ' is-depot' : '');
+
+    if (z.isDepot) {
+      card.innerHTML = `
+        <div class="zone-card-header">
+          <input type="text" value="${z.name}" onchange="zones[${i}].name=this.value;drawMap()"
+            style="color:#c2410c;font-weight:700;" />
+          <span class="depot-tag">★ Depot</span>
+        </div>
+        <div class="zone-fields">
+          <div class="zone-field">
+            <label>${latLabel}</label>
+            <input type="number" value="${z.y}" step="${step}" onchange="zones[${i}].y=+this.value;drawMap()" />
+          </div>
+          <div class="zone-field">
+            <label>${lngLabel}</label>
+            <input type="number" value="${z.x}" step="${step}" onchange="zones[${i}].x=+this.value;drawMap()" />
+          </div>
+          <div class="zone-field">
+            <label>Waste (kg)</label>
+            <input type="number" value="0" disabled style="background:#f3f4f6;color:#9ca3af;" />
+          </div>
+        </div>`;
+    } else {
+      card.innerHTML = `
+        <div class="zone-card-header">
+          <input type="text" value="${z.name}" onchange="zones[${i}].name=this.value;drawMap()" />
+          <button class="btn-del" onclick="removeZone(${i})">✕</button>
+        </div>
+        <div class="zone-fields">
+          <div class="zone-field">
+            <label>${latLabel}</label>
+            <input type="number" value="${z.y}" step="${step}" onchange="zones[${i}].y=+this.value;drawMap()" />
+          </div>
+          <div class="zone-field">
+            <label>${lngLabel}</label>
+            <input type="number" value="${z.x}" step="${step}" onchange="zones[${i}].x=+this.value;drawMap()" />
+          </div>
+          <div class="zone-field">
+            <label>Waste (kg)</label>
+            <input type="number" value="${z.waste}" min="0" step="10" onchange="zones[${i}].waste=+this.value;updateTruckCount()" />
+          </div>
+        </div>`;
+    }
+    list.appendChild(card);
+  });
+}
+
+function addZone() {
+  zones.push({ name: 'Zone ' + zones.length, y: 13.05, x: 80.25, waste: 100, isDepot: false });
+  renderZones(); updateTruckCount(); drawMap();
+}
+function removeZone(i) {
+  zones.splice(i, 1);
+  renderZones(); updateTruckCount(); drawMap();
+}
+
+// ── MAP DRAWING (Leaflet) ──
+function clearMapLayers() {
+  routeLayers.forEach(l => mapInstance.removeLayer(l));
+  markerLayers.forEach(l => mapInstance.removeLayer(l));
+  routeLayers = []; markerLayers = [];
+}
+
+function getLatLng(z) {
+  if (coordMode === 'latlng') return [z.y, z.x];
+  // Grid mode: map x/y (0-100) to lat/lng around depot area
+  return [12.9 + z.y * 0.003, 80.1 + z.x * 0.003];
+}
+
+let mapFitted = false;
+
+function drawMap(fitView = false) {
+  if (!mapInstance) return;
+  clearMapLayers();
+
+  // Draw route lines
+  routes.forEach((r, ti) => {
+    const color = COLORS[ti % COLORS.length];
+    const stops = r.stops;
+    for (let j = 0; j < stops.length - 1; j++) {
+      const from = getLatLng(zones[stops[j]]);
+      const to   = getLatLng(zones[stops[j + 1]]);
+      const isReturn = j === stops.length - 2;
+      const line = L.polyline([from, to], {
+        color, weight: 3.5,
+        dashArray: isReturn ? '10 6' : null,
+        opacity: isReturn ? 0.6 : 0.9
+      }).addTo(mapInstance);
+      routeLayers.push(line);
+
+      // Arrow decorator
+      const mid = [(from[0]+to[0])/2, (from[1]+to[1])/2];
+      const arrow = L.circleMarker(mid, { radius: 4, color, fillColor: color, fillOpacity: 0.8, weight: 0 }).addTo(mapInstance);
+      routeLayers.push(arrow);
+    }
+  });
+
+  // Draw zone markers
+  zones.forEach((z, i) => {
+    const pos = getLatLng(z);
+    const truckIdx = routes.findIndex(r => r.stops.includes(i));
+    const color = z.isDepot ? '#f97316' : (truckIdx >= 0 ? COLORS[truckIdx % COLORS.length] : '#6b7280');
+    const icon = L.divIcon({
+      html: `<div style="
+        background:${color};color:white;
+        width:${z.isDepot?36:30}px;height:${z.isDepot?36:30}px;
+        border-radius:50%;border:2.5px solid white;
+        display:flex;align-items:center;justify-content:center;
+        font-size:${z.isDepot?14:10}px;font-weight:700;
+        box-shadow:0 2px 8px rgba(0,0,0,0.25);
+        font-family:'DM Sans',sans-serif;
+        ">${z.isDepot ? '★' : z.waste+'kg'}</div>`,
+      className: '',
+      iconSize: [z.isDepot ? 36 : 30, z.isDepot ? 36 : 30],
+      iconAnchor: [z.isDepot ? 18 : 15, z.isDepot ? 18 : 15]
+    });
+    const marker = L.marker(pos, { icon })
+      .bindPopup(`<b>${z.name}</b><br>${z.isDepot ? 'Depot' : z.waste + ' kg waste'}`)
+      .addTo(mapInstance);
+    markerLayers.push(marker);
+  });
+
+  // Fit bounds only on explicit request
+  if (fitView && zones.length > 0) {
+    const points = zones.map(getLatLng);
+    mapInstance.fitBounds(L.latLngBounds(points), { padding: [40, 40] });
+  }
+}
+
+// ── ORS API ──
+function getApiKey() { return document.getElementById('orsKey').value.trim(); }
+
+async function testApiKey() {
+  const key = getApiKey();
+  const statusEl = document.getElementById('apiStatus');
+  if (!key) { statusEl.className = 'api-status err'; statusEl.textContent = '❌ No key entered'; return; }
+  try {
+    const res = await fetch('https://api.openrouteservice.org/v2/matrix/driving-car', {
+      method: 'POST',
+      headers: { 'Authorization': key, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ locations: [[80.27, 13.08], [80.23, 13.03]], metrics: ['distance'] })
+    });
+    if (res.ok) { statusEl.className = 'api-status ok'; statusEl.textContent = '✅ Key valid — ORS connected!'; }
+    else { const e = await res.json(); statusEl.className = 'api-status err'; statusEl.textContent = '❌ ' + (e.error?.message || 'Invalid key'); }
+  } catch(e) { statusEl.className = 'api-status err'; statusEl.textContent = '❌ Network error'; }
+}
+
+async function fetchORSMatrix(locations) {
+  const key = getApiKey();
+  const coords = locations.map(z => [
+    coordMode === 'latlng' ? z.x : (80.1 + z.x * 0.003),
+    coordMode === 'latlng' ? z.y : (12.9 + z.y * 0.003)
+  ]);
+  const res = await fetch('https://api.openrouteservice.org/v2/matrix/driving-car', {
+    method: 'POST',
+    headers: { 'Authorization': key, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ locations: coords, metrics: ['distance'], units: 'km' })
+  });
+  if (!res.ok) {
+    const e = await res.json();
+    throw new Error(e.error?.message || 'ORS API error ' + res.status);
+  }
+  const data = await res.json();
+  return data.distances; // [n x n] matrix in km
+}
+
+// ── VRP ALGORITHM ──
+function euclidDist(a, b) {
+  return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
+}
+
+function runVRPWithMatrix(distMatrix, numTrucks, cap) {
+  const depot = zones.findIndex(z => z.isDepot);
+  const unvisited = new Set(zones.map((_,i)=>i).filter(i => !zones[i].isDepot));
+  const result = [];
+
+  for (let t = 0; t < numTrucks; t++) {
+    if (unvisited.size === 0) break;
+    let cur = depot, load = 0, totalDist = 0;
+    const route = [depot];
+
+    while (unvisited.size > 0) {
+      let best = null, bestD = Infinity;
+      for (const ni of unvisited) {
+        if (load + zones[ni].waste <= cap) {
+          const d = distMatrix ? distMatrix[cur][ni] : euclidDist(zones[cur], zones[ni]);
+          if (d < bestD) { bestD = d; best = ni; }
+        }
+      }
+      if (best === null) break;
+      route.push(best); load += zones[best].waste;
+      totalDist += bestD; unvisited.delete(best); cur = best;
+    }
+    totalDist += distMatrix ? distMatrix[cur][depot] : euclidDist(zones[cur], zones[depot]);
+    route.push(depot);
+    result.push({ stops: route, load, dist: totalDist });
+  }
+  return result;
+}
+
+// ── MAIN RUN ──
+async function runVRP() {
+  const cap = +document.getElementById('truckCap').value;
+  const depot = zones.findIndex(z => z.isDepot);
+  if (depot < 0 || zones.length < 2) { alert('Need at least a depot and one zone!'); return; }
+
+  const numTrucks = updateTruckCount();
+  if (numTrucks === 0) { alert('No waste to collect!'); return; }
+
+  // UI loading state
+  const btn = document.getElementById('runBtn');
+  document.getElementById('runLabel').style.display = 'none';
+  document.getElementById('runSpinner').style.display = 'block';
+  btn.disabled = true;
+
+  let distMatrix = null;
+  const key = getApiKey();
+
+  if (key) {
+    document.getElementById('loadingOverlay').classList.add('show');
+    document.getElementById('loadingMsg').textContent = 'Fetching road distances via ORS...';
+    try {
+      distMatrix = await fetchORSMatrix(zones);
+    } catch(e) {
+      document.getElementById('loadingOverlay').classList.remove('show');
+      const useEuclid = confirm(`ORS API error: ${e.message}\n\nFall back to Euclidean distance?`);
+      if (!useEuclid) {
+        resetRunBtn(); return;
+      }
+    }
+    document.getElementById('loadingOverlay').classList.remove('show');
+  }
+
+  routes = runVRPWithMatrix(distMatrix, numTrucks, cap);
+  drawMap();
+  showResults(routes, cap, !!distMatrix);
+  resetRunBtn();
+}
+
+function resetRunBtn() {
+  document.getElementById('runLabel').style.display = 'inline';
+  document.getElementById('runSpinner').style.display = 'none';
+  document.getElementById('runBtn').disabled = false;
+}
+
+// ── RESULTS ──
+function showResults(rts, cap, usedORS) {
+  const totalDist = rts.reduce((s, r) => s + r.dist, 0);
+  const totalWaste = rts.reduce((s, r) => s + r.load, 0);
+  const allZoneIdxs = new Set(rts.flatMap(r => r.stops));
+  const unserved = zones.filter((z, i) => !z.isDepot && !allZoneIdxs.has(i));
+
+  let html = `<div class="results-top">
+    <div class="stat-pill">🚛 ${rts.length} truck(s)</div>
+    <div class="stat-pill">📏 ${totalDist.toFixed(2)} km total</div>
+    <div class="stat-pill">⚖️ ${totalWaste} kg collected</div>
+    ${usedORS ? '<div class="stat-pill">✅ ORS real roads</div>' : '<div class="stat-pill warn">⚠️ Euclidean estimate</div>'}
+  </div>
+  <div class="route-cards">`;
+
+  rts.forEach((r, ti) => {
+    const color = COLORS[ti % COLORS.length];
+    const stops = r.stops.filter(i => !zones[i].isDepot).map(i => zones[i].name);
+    html += `<div class="route-card" style="border-left-color:${color}">
+      <strong style="color:${color}">🚛 Truck ${ti+1}</strong>
+      <div class="route-meta">Load: <b>${r.load}</b>/${cap} kg &nbsp;|&nbsp; Distance: <b>${r.dist.toFixed(2)}</b> km</div>
+      <div class="route-stops">Depot → ${stops.join(' → ')} → Depot</div>
+    </div>`;
+  });
+  html += '</div>';
+
+  if (unserved.length > 0) {
+    html += `<div style="color:#b45309;font-size:0.72rem;margin-top:8px;background:#fef3c7;padding:6px 10px;border-radius:6px;">
+      ⚠️ ${unserved.length} zone(s) unserved: ${unserved.map(z=>z.name).join(', ')} — capacity may be too low.
+    </div>`;
+  } else {
+    html += `<div style="color:#166534;font-size:0.72rem;margin-top:8px;">✅ All zones successfully covered!</div>`;
+  }
+
+  document.getElementById('resultsPanel').innerHTML = html;
+}
+
+// ── INIT ──
+window.addEventListener('load', () => {
+  document.getElementById('truckCap').addEventListener('input', updateTruckCount);
+  initMap();
+  loadDefault();
+});
+</script>
+</body>
+</html>
